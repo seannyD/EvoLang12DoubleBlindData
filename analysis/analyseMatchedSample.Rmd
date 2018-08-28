@@ -1,0 +1,230 @@
+---
+title: "Matched sample E10, E11 and E12"
+output: pdf_document
+---
+
+```{r echo=F,eval=F}
+setwd("~/Documents/Conferences/Evolang12/genderBias2018_public/analysis/")
+```
+
+
+Load libraries and extra plotting functions.
+
+```{r, warning=F,message=F}
+library(ggplot2)
+library(lme4)
+source("SplitViolinPlot.R")
+library(tidyr)
+library(lavaan)
+library(semPlot)
+library (scales) 
+```
+
+```{r}
+allC = read.csv("../data/MatchedAuthors_E10_E11_E12.csv")
+allC.long = allC %>% gather(conference,Score.mean,2:4)
+allC.long$format = allC.long$E10.format
+allC.long[allC.long$conference=="E11",]$format =
+  allC.long[allC.long$conference=="E11",]$E11.format
+allC.long[allC.long$conference=="E12",]$format =
+  allC.long[allC.long$conference=="E11",]$E12.format
+```
+
+
+```{r}
+gx = ggplot(allC.long, 
+       aes(conference, Score.mean, fill=gender)) + 
+  annotate("text", x = c(1,2.5), y = c(1.05,1.05), 
+           label=c("Single-Blind", "Double-Blind"), size=6) +
+  geom_split_violin() + 
+  geom_vline(xintercept=1.5) +
+  scale_y_continuous(name="Score ranking", breaks = c(0,0.25,0.5,0.75,1))+
+  scale_x_discrete(name="Conference")+
+  scale_fill_grey(start = 0.55, end=0.8,name="First Author Gender") +
+  geom_boxplot(width=0.2, show.legend = F) +
+  theme(legend.position = "top",
+        panel.grid.major.x = element_blank()) 
+gx
+pdf("../results/MatchedSamples.pdf",
+    height=5,width=6)
+gx
+dev.off()
+```
+
+\newpage
+
+Fit a mixed effects model with random intercepts for author. The key question is whether there is an interaction between gender and review Type.
+
+```{r}
+contrasts(allC.long$gender) <- contr.sum(2)/2
+contrasts(allC.long$format) <- contr.sum(2)/2
+allC.long$reviewType =
+  as.factor(c("Single","Double")[
+    1+(allC.long$conference %in% c("E11","E12"))])
+contrasts(allC.long$reviewType) <- contr.sum(2)/2
+
+m0 = lmer(scale(Score.mean)~ 1 +
+       format +
+       (1|authorCode),
+        data = allC.long)
+# Check if review type needs a random slope
+mRevRan = update(m0,~.+(0+reviewType|authorCode))
+anova(m0,mRevRan)
+#No
+
+# Add variales
+mGen = update(m0,~.+gender)
+anova(m0,mGen)
+mGenXFormat = update(mGen,~.+gender:format)
+anova(mGen,mGenXFormat)
+mRev = update(mGenXFormat,~.+reviewType)
+anova(mGen,mRev)
+mGenxRev = update(mRev,~.+gender:reviewType)
+anova(mRev,mGenxRev)
+```
+
+Significant effect of gender (in this sample, female authors tend to receive better scores overall than males).  As in the full sample, abstracts receive higher scores than papers.  There is no significant interaction between gender and review type.
+
+\newpage
+
+Plot individual data:
+
+```{r}
+ggplot(allC.long, 
+       aes(y=Score.mean,
+           x=conference,
+           group=authorCode, 
+           colour=authorCode)) + 
+  geom_line() + theme(legend.position = 'none')
+ggplot(allC.long, 
+       aes(y=Score.mean,
+           x=conference,
+           group=authorCode, 
+           colour=gender)) + 
+  geom_line()
+```
+
+
+Plot improvement from E10 to E11 against improvement from E11 to E12.
+
+```{r}
+ggplot(allC, aes(x=diff.E10.to.E11,y=diff.E11.to.E12,colour=gender)) + geom_point() +
+  xlab("Change from E11 to E12") + 
+  ylab("Change from E10 to E11")
+
+```
+
+This seems to suggest that researchers who improved from E10 to E11 tended to do worse going from E11 to E12. There seems to be no effect of gender on this relationship:
+
+```{r}
+contrasts(allC$gender) <- contr.sum(2)/2
+summary(lm(diff.E11.to.E12~diff.E10.to.E11*gender,
+           data=allC))
+```
+
+There's also a positive relationship between improvement from E10 to E11 and the difference between E12 and E10. i.e. if you improved from E10 to E11, then you will have improved from E10 to E12.
+
+```{r}
+ggplot(allC, aes(x=diff.E10.to.E11,y=E12-E10,colour=gender)) + geom_point() +
+  xlab("Change from E11 to E12") + 
+  ylab("Change from E10 to E11")
+```
+
+
+Only 10\% of researchers improve year on year:
+```{r}
+table((allC$E10 < allC$E11) & (allC$E11 < allC$E12))
+```
+
+\newpage
+
+# Causal approach
+
+In the analysis below, we use a structural equation model based on the hypothesised causal structure of the data.
+
+Part of the reason for doing this is that submission format varies with gender. Because abstracts are more likely to be given higher scores than papers in general, this might be confounding the effect of gender.  Below is a graph created from the whole data (not just the matched samples):
+
+
+```{r}
+allData = read.csv("../data/EvoLang_Scores_8_to_12.csv",stringsAsFactors = F)
+# relabel factor
+allData$FirstAuthorGender = factor(allData$FirstAuthorGender,labels=c("F","M"))
+allData$review = factor(c("Single","Double")[(allData$conference %in% c("E11","E12"))+1])
+allData$conference = factor(allData$conference,levels = c("E8","E9","E10","E11","E12"))
+allData$format = factor(allData$format)
+
+ggplot(allData, aes(FirstAuthorGender)) +
+    geom_bar(aes(fill=format), position = "fill") +
+  scale_y_continuous(labels = percent_format())+
+  facet_grid(~conference) +
+  theme(legend.position = "top")
+```
+
+From the raw distribution, we see that male authors are more likely to submit a paper than female authors (though this trend varies by conference).
+
+\newpage
+
+In the structural equation model, we assume that:
+
+-  The author's score for one conference has an impact on the score in the following year.
+-  The author's choice of submission format in a given year influences the score (independently for that year).
+-  The author's gender influences which format they submit.
+-  The author's gender affects the score in E10 (single blind review)
+-  The author's gender does not affect the score in E11 nor E12 (double blind reivew), but we estimate a correlation.
+
+
+```{r}
+allC$gender.F = allC$gender=="F"
+allC$E10.abstract = allC$E10.format=="Abstract"
+allC$E11.abstract = allC$E11.format=="Abstract"
+allC$E12.abstract = allC$E12.format=="Abstract"
+model = "
+E12 ~ E11 
+E11 ~ E10
+E10 ~ NA*E10.abstract + gender.F
+E11 ~ E11.abstract
+E11 ~~ gender.F
+E12 ~ E12.abstract
+E12 ~~ gender.F
+E10.abstract ~ gender.F
+E11.abstract ~ gender.F
+E12.abstract ~ gender.F
+"
+fit <- sem(model, data=allC)
+summary(fit, standardized=T)
+```
+
+Plots:
+
+```{r fig.height=3}
+layout = matrix(c(
+  1,6,  1,4,  1,2,  2,1,  2,3,  2,5,  3,3),
+  ncol=2,byrow = T)
+layout = layout[,2:1]
+```
+
+Model:
+
+```{r}
+semPaths(fit,nCharNodes = 11,layout=layout)
+```
+
+Model with standard estimates:
+
+```{r fig.height=3}
+semPaths(fit, 'std',layout=layout,residuals=F,intercepts=F,exoVar=F,
+         exoCov=T,nCharNodes=11,sizeMan=10,shapeMan="rectangle")
+text(-1.3,-1,"Scores")
+text(-1.3,0,"Format")
+text(-1.3,1,"Gender")
+```
+
+
+The direct effect of gender on score for E10 is not different from zero (the distributions for male and female authors is similar for E10).  The relationship between gender and score for E11 and E12 is positive (female authored papers receive higher scores than male authored papers), but only marginally significant.
+
+The effect of gender on format is strong for E10 (female authors prefer to submit abstracts), but weaker for E11 and E12.  The effect of format on score is significant for E10 and E12 (abstracts score higher than papers), but weaker not for E11.
+
+Improvement from E10 to E11 is marginally significant, but there is no improvement from E11 to E12.  The correlations between reported above may be due to colliders in the causal graph.
+
+
+

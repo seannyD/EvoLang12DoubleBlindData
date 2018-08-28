@@ -1,0 +1,1 @@
+setwd("/Users/sgroberts/Documents/Conferences/Evolang12/genderBias2018_public/analysis")

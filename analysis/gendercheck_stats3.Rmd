@@ -1,0 +1,643 @@
+---
+title: "The impact of double blind reviewing at EvoLang 12: statistics"
+output: 
+  pdf_document:
+    toc: true
+---
+
+```{r echo=F, eval=F}
+setwd("~/Documents/Conferences/Evolang12/genderBias2018_public/analysis/")
+```
+
+
+# Introduction
+
+# Data
+
+This script uses the data file `EvoLang_Scores_8_to_12.csv`:
+
+-  conference:  Which conference the paper was submitted to
+-  gender: Gender of first author
+-  Score.Mean:  Mean raw score given by reviewers (scaled between 0 and 1, higher = better paper)
+-  student: The student status of the first author at submission.
+
+All variables with an underscore are measures of readability.  Below we calculate a variable `review`, which represents the type of review (Single / Double blind).
+
+# Loading data for first analysis
+
+Load libraries.
+
+```{r warning=F, message=F}
+# Load data
+library(lattice)
+library(ggplot2)
+library(gplots)
+library(lme4)
+library(car)
+library(caret)
+library(dplyr)
+library(party)
+library(lmerTest)
+```
+
+```{r}
+
+# read data
+allData = read.csv("../data/EvoLang_Scores_8_to_12.csv",stringsAsFactors = F)
+# relabel factor
+allData$FirstAuthorGender = factor(allData$FirstAuthorGender,labels=c("F","M"))
+allData$review = factor(c("Single","Double")[(allData$conference %in% c("E11","E12"))+1])
+allData$conference = factor(allData$conference,levels = c("E8","E9","E10","E11","E12"))
+allData$format = factor(allData$format)
+
+allData$student[!is.na(allData$student) &
+                  allData$student=="Faculty"] = "Non-Student"
+allData$student[!is.na(allData$student) &
+                  allData$student=="EC"] = "Non-Student"
+allData$student = factor(allData$student)
+
+#allData$Score.mean = scale(allData$Score.mean)
+
+for(conf in levels(allData$conference)){
+  allData$Score.mean[allData$conference==conf] = scale(allData$Score.mean[allData$conference==conf])
+}
+
+```
+
+Look at the distribution of submissions:
+
+```{r}
+table(allData$FirstAuthorGender,allData$conference)
+prop.table(table(allData$FirstAuthorGender,allData$conference),2)
+
+gtable = table(allData$FirstAuthorGender,allData$conference,allData$student)
+write.csv(cbind(t(gtable[,,1]),t(gtable[,,2])),
+          "../results/CountTable.csv")
+gtable
+```
+
+\newpage
+
+# Plots
+
+Rank by gender.  It seems that the difference in E11 is not replicated in E12.
+
+```{r}
+source("../analysis/summarySE.r")
+p2 <- ggplot(allData, 
+             aes((conference):(FirstAuthorGender), Score.mean,
+                 fill=FirstAuthorGender))
+
+p2 <- p2 + geom_violin() + geom_boxplot(width=0.1) +
+  theme(text=element_text(size=20), legend.position="none") +
+  scale_y_continuous(name="Score ranking")+
+  scale_x_discrete(name="")+
+  scale_fill_grey(start = 0.55, end=0.8) + 
+  theme(text = element_text(size=10))
+
+p2
+
+pdf("../results/Results_Gender_3conf.pdf", width = 12, height= 6)
+p2
+dev.off()
+
+p2Abstract <- ggplot(allData[allData$format=="Abstract",], 
+             aes((conference):(FirstAuthorGender), Score.mean,
+                 fill=FirstAuthorGender))
+
+p2Abstract <- p2Abstract + geom_violin() + geom_boxplot(width=0.1) +
+  theme(text=element_text(size=20), legend.position="none") +
+  scale_y_continuous(name="Score ranking")+
+  scale_x_discrete(name="")+
+  scale_fill_grey(start = 0.55, end=0.8) + 
+  theme(text = element_text(size=10)) +
+  ggtitle("Scores for abstracts only")
+p2Abstract
+
+p2Paper <- ggplot(allData[allData$format=="Paper",], 
+             aes((conference):(FirstAuthorGender), Score.mean,
+                 fill=FirstAuthorGender))
+
+p2Paper <- p2Paper + geom_violin() + geom_boxplot(width=0.1) +
+  theme(text=element_text(size=20), legend.position="none") +
+  scale_y_continuous(name="Score ranking")+
+  scale_x_discrete(name="")+
+  scale_fill_grey(start = 0.55, end=0.8) + 
+  theme(text = element_text(size=10)) +
+  ggtitle("Scores for full papers only")
+p2Paper
+
+```
+
+Rank by student status in each conference.
+
+```{r}
+p <- ggplot(allData[complete.cases(allData),], aes(conference:student, Score.mean, fill=student))
+
+p <- p + geom_violin() + geom_boxplot(width=0.1) +
+  theme(text=element_text(size=20), legend.position="none") +
+  scale_y_continuous(name="Score ranking")+
+  scale_x_discrete(name="")+
+  scale_fill_grey(start = 0.55, end=0.8)+ 
+  theme(text = element_text(size=10))
+p
+pdf("../results/Results_Student_3conf.pdf", width = 12, height= 6)
+p
+dev.off()
+
+```
+
+Format:
+
+```{r}
+p <- ggplot(allData, aes(conference:format, Score.mean, fill=format))
+
+p <- p + geom_violin() + geom_boxplot(width=0.1) +
+  theme(text=element_text(size=10)) +
+  scale_y_continuous(name="Score ranking")+
+  scale_x_discrete(name="")+
+  scale_fill_grey(start = 0.55, end=0.8)
+p
+```
+
+
+Combined student and gender:
+
+```{r}
+ggplot(allData[allData$conference!="E8",],
+       aes(y=Score.mean,x=paste(student,FirstAuthorGender),colour=conference))+ geom_boxplot(varwidth = 0.5) 
+
+allData$stuGen = factor(paste(allData$conference,
+                     allData$FirstAuthorGender),
+                  levels=c("E8 F","E8 M","E9 F","E9 M","E10 F","E10 M","E11 F","E11 M","E12 F",'E12 M'))
+
+ad2 = allData[allData$conference!="E8",]
+
+ggplot(ad2, mapping = aes(y=Score.mean,
+           x=stuGen,
+           colour=student))+
+  geom_boxplot(varwidth = 0.5) 
+
+```
+
+
+\newpage 
+
+# Review ranks by gender and student status
+
+Are papers with female first authors ranked higher than those with male first authors under double-blind review?
+
+Using a simple anova, there's a significant interaction between gender and review type:
+
+```{r}
+summary(aov(Score.mean ~ FirstAuthorGender*student*review*format,
+            data=allData[allData$conference!="E8",]))
+```
+
+However, it looks like this is driven just by EvoLang11:
+
+```{r}
+t.test.string = function(tx){
+  t = signif(tx$statistic,2)
+  df = tx$parameter['df']
+  p = signif(tx$p.value,3)
+  est = signif(diff(tx$estimate),2)
+  
+  paste("(difference in means = ",est,", t = ",t,", p = ",p,")",sep = "")
+}
+for(conf in levels(allData$conference)){
+  print(conf)
+  print(t.test.string(t.test(Score.mean~FirstAuthorGender, data=allData[allData$conference==conf,])))
+}
+```
+
+There is also a significant main effect of first author gender.
+
+
+The model above mots EvoLang 8 because it has no data for student status. We get the same results if we omit student status and run the test for all conferences:
+
+```{r}
+summary(aov(Score.mean ~ FirstAuthorGender*review*format,
+            data=allData))
+```
+
+
+\newpage
+
+## Mixed effects model
+
+Alternatively, we can use a mixed effects model, with random slopes for conference and test whether the interaction between gender and review type is a significant fixed predictor.  A random intercept is not necessary, because the data is scaled to be centered around 0 within each conference.  A random slope for the interaction between gender and review is also not permissable, since review type does not vary by conference.
+
+
+```{r warning=F}
+
+contrasts(allData$FirstAuthorGender) <- contr.sum(2)/2
+contrasts(allData$review) <- contr.sum(2)/2
+contrasts(allData$student) <- contr.sum(2)/2
+contrasts(allData$format) <- contr.sum(2)/2
+
+m0 <- lmer(
+      Score.mean ~ 
+        1 + (FirstAuthorGender*review*student*format) +
+        (0+FirstAuthorGender+student+format|conference),
+      allData[allData$conference!="E8",],
+  control=lmerControl(optimizer="bobyqa",optCtrl = list(maxfun=10000000)),
+  REML = T
+) 
+
+summary(m0)
+```
+
+The results above suggest that there's no overall interaction between gender and review type.  The tendency is there, but from the plots it's probably just driven by EvoLang 11.
+
+We can run the same model without student status to include data from EvoLang 8:
+
+```{r}
+m0 <- lmer(
+      Score.mean ~ 
+        1 + (FirstAuthorGender*review*format) +
+        (0+FirstAuthorGender+format|conference),
+      allData,
+  control=lmerControl(optimizer="bobyqa",optCtrl = list(maxfun=10000000)),
+  REML = T
+) 
+
+summary(m0)
+```
+
+Again, there's no interaction between gender and review type.
+
+\newpage
+
+## Permutation test
+
+The distributions of score means are not very normal within conferences.  We run a permutation test to address this.  We calculate the average difference between single blind and double blind scores for males (dM) and for females (dF).  Then we calculate dF - dM. A value > 0 means females scores increase more than male scores under double blind review. This 'true difference' is compared to a 'permuted difference'.  The association between review scores and review type is randomly permuted, and dF - dM is calculated again.  This is done 10,000 times to compare the true difference to a distribution of random differences.
+
+```{r}
+meanDifferenceBetweenGenders = function(d){
+  # difference in means between review types
+  # for males
+  # (change from single to double)
+  diffMales = diff(rev(tapply(d[d$FirstAuthorGender=="M",]$Score.mean,
+              d[d$FirstAuthorGender=="M",]$review,
+              mean)))
+  # for females
+  diffFemales = diff(rev(tapply(d[d$FirstAuthorGender=="F",]$Score.mean,
+              d[d$FirstAuthorGender=="F",]$review,
+              mean)))
+  # difference in differences
+  # value > 0 means female scores increase 
+  # more under double-blind review than male scores
+  return(diffFemales-diffMales)
+}
+
+perm = function(d){
+  d$review = sample(d$review)
+  meanDifferenceBetweenGenders(d)
+}
+
+perm.test = function(d,title){
+  n = 10000
+  trueDiff = meanDifferenceBetweenGenders(d)
+  permDiff = replicate(n, perm(d))
+  
+  p = sum(permDiff>trueDiff) / n
+  z = (trueDiff-mean(permDiff)) / sd(permDiff)
+  print(paste("p=",p,", z=",z))
+  hist(permDiff,xlab="Female advantage in double-blind",main=title)
+  abline(v=trueDiff,col=2)
+}
+```
+
+Permutation test for all data:
+
+```{r}
+perm.test(allData,
+          "All conferences")
+```
+
+Permutation test without E11 data:
+
+```{r}
+perm.test(allData[allData$conference!="E11",],
+          "Without E11")
+```
+
+Permutation test without E12 data:
+
+```{r}
+perm.test(allData[allData$conference!="E12",],
+          "Without E12")
+```
+
+The results are in line with the test above. Across the whole data, females are given higher scores in double-blind, but this is driven by E11 alone.
+
+\newpage
+
+## Decision tree exploration
+
+Construct a decision tree, attempting to predict review socres by format, student status, gender, review model and conference.
+
+```{r}
+set.seed(2389)
+for(f in c("conference","format",'student','FirstAuthorGender','review')){
+  allData[,f] = as.factor(allData[,f])
+}
+ct = ctree(Score.mean ~ format + student  +  
+             FirstAuthorGender + review + conference, data=allData)
+plot(ct)
+```
+
+Work out differences between leaves of the tree:
+
+```{r}
+paperVabstract = tapply(allData$Score.mean,allData$format,mean)
+paperVabstract
+
+pStudentVpNonStuent = tapply(allData[
+  allData$format=="Paper",]$Score.mean,
+  allData[allData$format=="Paper",]$student,mean)
+pStudentVpNonStuent
+```
+
+The tree suggests that full papers are given lower ratings than abstracts on average (about `r round(abs(diff(paperVabstract))/diff(range(allData$Score.mean))*100,1)`% difference).  
+For full papers, students are given higher ratings than non-students
+(about `r round(abs(diff(pStudentVpNonStuent))/diff(range(allData$Score.mean))*100,1)`% difference).
+
+
+\newpage
+
+# Readability scores
+
+This section uses the file `EvoLang_ReadingScores_E8_to_E12.csv`. It includes the following variables:
+
+-  `conference`:  Conference
+-  `gender`:  Gender of first author
+-  `student`:  Student status
+-  `format`:  Full paper or short abstract
+-  `char_count`, `word_count`, `sent_count`, `sybl_count`:  Number of characters, words, sentences and syllables.  These distributions have been scaled and centrered.
+-  `*_score`:  Various measures of readability, calculated using the tools from Hengel (2016).
+-  Score.mean:   Mean raw score given by reviewers (scaled between 0 and 1, higher = better paper)
+
+Read the data:
+
+```{r}
+readScores = read.csv("../data/EvoLang_ReadingScores_E8_to_E12.csv",stringsAsFactors = F)
+```
+
+We'll focus on the Flesch-Kinkaid score (since most other measures are highly correlated with it and it's easy to interpret) and the Dale-Chall score (which is not highly correlated with the other measures):
+
+```{r}
+round(cor(readScores[,c("flesch_score","fleschkincaid_score",
+                        "gunningfog_score" ,"smog_score","dalechall_score"
+                        )]),2)
+```
+
+Scale the variables:
+
+```{r}
+readScores$fleschkincaid_score_scaled = scale(readScores$fleschkincaid_score)
+readScores$dalechall_score_scaled = scale(readScores$dalechall_score)
+readScores$student[readScores$student=="EC"] = "Non-Student"
+readScores$student[readScores$student=="Faculty"] = "Non-Student"
+# Remove an outlier
+readScores = readScores[readScores$fleschkincaid_score_scaled<6,]
+readScores$gender = factor(readScores$gender)
+
+readScores$conference = factor(readScores$conference,
+                               levels = c("E8","E9","E10","E11","E12"))
+
+# Box-Cox scaling
+pp = preProcess(readScores[,
+        c('fleschkincaid_score',"dalechall_score")], 
+        method="BoxCox")
+lambda.fk = pp$bc$fleschkincaid_score$lambda
+lambda.dc = pp$bc$dalechall_score$lambda
+readScores$fleschkincaid_score_norm = 
+  bcPower(readScores$fleschkincaid_score, lambda = lambda.fk)
+readScores$dalechall_score_norm = 
+  bcPower(readScores$dalechall_score, lambda = lambda.dc)
+readScores$Score.mean.norm = scale(readScores$Score.mean)
+
+readScores$review = factor(c("Single","Double")[(readScores$conference %in% c("E11","E12"))+1])
+readScores$student = factor(readScores$student)
+readScores$format = factor(readScores$format)
+```
+
+Create `time` variable: a continuous variable increasing with each conference.
+
+```{r}
+readScores$time = as.numeric(readScores$conference)-3
+```
+
+Number of available datapoints (less than the total because some papers could not be automatically converted to text):
+
+```{r}
+table(readScores$conference,readScores$gender)
+gtable2 = table(readScores$gender,readScores$conference,readScores$student)
+write.csv(cbind(t(gtable2[,,1]),t(gtable2[,,2])),
+          "../results/CountTable_Readability.csv")
+gtable2
+```
+
+
+
+### Flesch-Kinkaid score
+
+Various Plots:
+
+```{r}
+ggplot(readScores, aes(y=fleschkincaid_score,x=conference)) + geom_boxplot()
+ggplot(readScores, aes(y=fleschkincaid_score,x=conference,colour=gender)) + geom_boxplot()
+ggplot(readScores, aes(y=fleschkincaid_score,x=gender,colour=conference)) + geom_boxplot()
+ggplot(readScores, aes(y=fleschkincaid_score,x=conference,colour=format)) + geom_boxplot()
+ggplot(readScores, aes(y=fleschkincaid_score,x=paste(student,gender),colour=conference))+ geom_boxplot(varwidth = 0.5) 
+
+x = readScores %>% group_by(conference,gender,student) %>% 
+  summarise(dalechall_score=mean(dalechall_score),
+            fleschkincaid_score=mean(fleschkincaid_score))
+ggplot(x,aes(x=(conference),y=fleschkincaid_score,
+             group=paste(gender,student),
+             colour=paste(gender,student))) + 
+  geom_line() + geom_point()
+
+
+ggplot(readScores,
+       aes(x=fleschkincaid_score,
+           y=dalechall_score,
+           colour=format)) +
+  geom_point()
+```
+
+\newpage
+
+Decision tree
+
+```{r}
+plot(ctree(fleschkincaid_score~
+             review+gender+time+format,
+           data=readScores))
+```
+
+\newpage
+
+Is there a gender difference between E11 and E12?
+
+```{r}
+ggplot(readScores[readScores$conference %in% c("E11","E12"),],
+       aes(x = conference, y=fleschkincaid_score, colour=gender)) +
+  geom_boxplot() 
+```
+
+
+```{r}
+summary(aov(fleschkincaid_score_norm~
+              format*conference*student*gender,
+              data = readScores[readScores$conference %in% c("E11","E12"),]))
+```
+
+There is an effect for format, but nothing else.
+
+\newpage
+
+Mixed effects model across the whole readability data.  The model was not converging with a random slope for student, so:
+
+```{r warning=F}
+contrasts(readScores$gender) <- contr.sum(2)/2
+contrasts(readScores$student) <- contr.sum(2)/2
+contrasts(readScores$format) <- contr.sum(2)/2
+
+m0 = lmer(fleschkincaid_score_scaled~ 1 +
+            (format*student*gender*review) + time +
+           (1 + format + student + gender | conference),
+       data = readScores[readScores$conference!="E8",])
+summary(m0)
+```
+
+Abstracts have higher reading scores than papers, and socres are increasing over time, but there are no other significant effects.
+
+### Dale-Chall scale
+
+Plots
+
+```{r}
+ggplot(readScores, aes(y=dalechall_score,x=conference,colour=gender)) + geom_boxplot()
+ggplot(readScores, aes(y=dalechall_score,x=gender,colour=conference)) + geom_boxplot()
+ggplot(x,aes(x=(conference),y=dalechall_score,group=paste(gender,student),colour=paste(gender,student))) + geom_line() + geom_point()
+ggplot(readScores, aes(y=dalechall_score,x=format,colour=conference)) + geom_boxplot()
+```
+
+\newpage
+
+Decision tree:
+
+```{r}
+plot(ctree(dalechall_score~review+gender+
+             time+format,data=readScores))
+```
+
+\newpage
+
+Is there a gender difference between E11 and E12?
+
+```{r}
+ggplot(readScores[readScores$conference %in% c("E11","E12"),],
+       aes(x = conference, y=dalechall_score, colour=gender)) +
+  geom_boxplot() 
+```
+
+```{r}
+summary(aov(dalechall_score_norm~
+              format*conference*student*gender,
+              data = readScores[readScores$conference %in% c("E11","E12"),]))
+```
+
+There's an effect for format, but nothing else.
+
+\newpage
+
+Mixed effects model across whole data:
+
+Scale and center the distribution, removing some outliers:
+
+```{r warning=F}
+#readScores = readScores[readScores$student!="Student",]
+sdx = 1.96 * sd(readScores$dalechall_score_norm)
+mx = mean(readScores$dalechall_score_norm)
+readScoresDC = readScores[
+  readScores$dalechall_score_norm < (mx +sdx) &
+  readScores$dalechall_score_norm > (mx -sdx)
+,]
+readScoresDC$dalechall_score_norm = scale(readScoresDC$dalechall_score_norm)
+
+contrasts(readScoresDC$gender) <- contr.sum(2)/2
+contrasts(readScoresDC$format) <- contr.sum(2)/2
+contrasts(readScoresDC$student) <- contr.sum(2)/2
+contrasts(readScoresDC$review) <- contr.sum(2)/2
+```
+
+Run mixed effects model:
+
+```{r}
+m0 = lmer(dalechall_score_norm~ 1 +
+            (format*student*gender*review) + time +
+           (1 + format + student + gender | conference),
+       data = readScoresDC[readScoresDC$conference!="E8",])
+summary(m0)
+```
+
+Differences by format, but no other effects.
+
+## Reading scores and review scores
+
+The simple correlations between reading score and review scores are weak, but suggest that higher scores are given to submissions with higher reading grades:
+
+```{r}
+cor.test(readScores$Score.mean, readScores$fleschkincaid_score)
+cor.test(readScores$Score.mean, readScores$dalechall_score)
+
+ggplot(readScores,
+       aes(y=fleschkincaid_score,
+           x=Score.mean)) +
+  geom_point() + 
+  stat_smooth(method = 'lm')
+ggplot(readScores,
+       aes(y=dalechall_score,
+           x=Score.mean)) +
+  geom_point() + 
+  stat_smooth(method = 'lm')
+```
+
+Are there interactions between reading scores and gender?
+
+```{r}
+m0 = lmer(Score.mean.norm~ 1 +
+            format + student + gender +
+           (1 | conference),
+       data = readScores,
+       control = lmerControl(optimizer = 'Nelder_Mead'),
+       REML = F)
+m1 = update(m0,~.+fleschkincaid_score_scaled)
+m2 = update(m1,~.+fleschkincaid_score_scaled:gender)
+anova(m0,m1,m2)
+summary(m2)
+```
+
+Dale-Chall scores:
+
+```{r}
+m0 = lmer(Score.mean.norm~ 1 +
+            format + student + gender +
+           (1 | conference),
+       data = readScoresDC,
+       REML = F)
+m1 = update(m0,~.+dalechall_score_scaled)
+m2 = update(m1,~.+dalechall_score_scaled:gender)
+anova(m0,m1,m2)
+summary(m2)
+```
+
+No interactions.
+
+
+
