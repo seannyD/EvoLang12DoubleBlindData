@@ -710,8 +710,8 @@ We investigated whether the review scores were biased by combinations of first a
 
 Here are the distributions of review scores by first and last author gender:
 
-![](../results/LastAuthorReviewScores.pdf)
+![Distributions of review scores by first and last author gender.](../results/LastAuthorReviewScores.pdf)
 
-![](../results/LastAuthorReviewScores2.pdf)
+![Distributions of review scores by first and last author gender.](../results/LastAuthorReviewScores2.pdf)
 
-![](../results/LastAuthorReviewScores3.pdf)
+![Coefficients and confidence intervals for effects predicting review ranks.](../results/LastAuthorReviewScores3.pdf)
