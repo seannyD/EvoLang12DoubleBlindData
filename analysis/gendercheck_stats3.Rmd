@@ -33,6 +33,8 @@ library(lattice)
 library(ggplot2)
 library(gplots)
 library(lme4)
+library(magrittr)
+library(qwraps2)
 library(car)
 library(caret)
 library(dplyr)
@@ -178,6 +180,25 @@ ggplot(ad2, mapping = aes(y=Score.mean,
            colour=student))+
   geom_boxplot(varwidth = 0.5) 
 
+allData$stuFor = factor(paste(allData$format,
+                              allData$student))
+
+ggplot(allData[!is.na(allData$student),],
+       mapping = aes(y=Score.mean,
+           x=stuFor,
+           colour=student))+
+  geom_boxplot(varwidth = 0.5) 
+
+```
+
+Summary statistics
+
+```{r}
+t1 = table(allData$conference,allData$FirstAuthorGender)
+t2 = table(allData$conference,allData$student)
+t3 = table(allData$conference,allData$format)
+
+cbind(t1,t2,t3)
 ```
 
 
@@ -444,14 +465,57 @@ gtable2
 
 ### Flesch-Kinkaid score
 
+Descriptive stats
+
+```{r}
+mean(readScores$fleschkincaid_score)
+cor.test(readScores$fleschkincaid_score,readScores$dalechall_score)
+sel = readScores$conference=="E11"
+mean(readScores[sel & readScores$gender=="M",]$fleschkincaid_score) -
+  mean(readScores[sel & readScores$gender=="F",]$fleschkincaid_score)
+sel = readScores$conference=="E12"
+mean(readScores[sel & readScores$gender=="M",]$fleschkincaid_score) -
+  mean(readScores[sel & readScores$gender=="F",]$fleschkincaid_score)
+
+
+meanFK = 
+  rbind(tapply(readScores$fleschkincaid_score[readScores$gender=="F"],
+             readScores$conference[readScores$gender=="F"],mean),
+tapply(readScores$fleschkincaid_score[readScores$gender=="M"],
+       readScores$conference[readScores$gender=="M"],mean))
+sdFK = 
+  rbind(tapply(readScores$fleschkincaid_score[readScores$gender=="F"],
+             readScores$conference[readScores$gender=="F"],sd),
+tapply(readScores$fleschkincaid_score[readScores$gender=="M"],
+       readScores$conference[readScores$gender=="M"],sd))
+
+msdFK = matrix(paste0(round(meanFK,2)," (",round(sdFK,2),")"),nrow=2)
+colnames(msdFK) = sort(unique(readScores$conference))
+rownames(msdFK) = c("Female","Male")
+write.csv(msdFK,"../results/MeanFleschKincaidScores_by_conf_by_gender.csv")
+```
+
+
 Various Plots:
 
 ```{r}
+readScores$gender2 = "Female"
+readScores$gender2[readScores$gender=="M"] = "Male"
+
 ggplot(readScores, aes(y=fleschkincaid_score,x=conference)) + geom_boxplot()
 ggplot(readScores, aes(y=fleschkincaid_score,x=conference,colour=gender)) + geom_boxplot()
 ggplot(readScores, aes(y=fleschkincaid_score,x=gender,colour=conference)) + geom_boxplot()
 ggplot(readScores, aes(y=fleschkincaid_score,x=conference,colour=format)) + geom_boxplot()
 ggplot(readScores, aes(y=fleschkincaid_score,x=paste(student,gender),colour=conference))+ geom_boxplot(varwidth = 0.5) 
+
+fkrs = ggplot(readScores, aes(y=fleschkincaid_score,x=conference)) + 
+  geom_boxplot() + facet_grid("gender2") +
+  labs(y="Flesch-Kincaid reading score", x="Gender")
+
+pdf("../results/FleschKincaidReadingScores.pdf",
+    width=6,height=4)
+fkrs
+dev.off()
 
 x = readScores %>% group_by(conference,gender,student) %>% 
   summarise(dalechall_score=mean(dalechall_score),
@@ -467,6 +531,17 @@ ggplot(readScores,
            y=dalechall_score,
            colour=format)) +
   geom_point()
+
+fkrs2= ggplot(readScores, aes(y=fleschkincaid_score,
+                              x=conference,colour=gender)) + 
+  geom_boxplot() +
+  labs(y="Flesch-Kincaid reading score", x="Conference")
+
+pdf("../results/FleschKincaidReadingScores2.pdf",
+    width=6,height=4)
+fkrs2
+dev.off()
+
 ```
 
 \newpage
@@ -508,13 +583,13 @@ contrasts(readScores$student) <- contr.sum(2)/2
 contrasts(readScores$format) <- contr.sum(2)/2
 
 m0 = lmer(fleschkincaid_score_scaled~ 1 +
-            (format*student*gender*review) + time +
+            (format+student+gender+review)^2 + time +
            (1 + format + student + gender | conference),
        data = readScores[readScores$conference!="E8",])
 summary(m0)
 ```
 
-Abstracts have higher reading scores than papers, and socres are increasing over time, but there are no other significant effects.
+Abstracts have higher reading scores than papers (marginally), but there are no other significant effects.
 
 ### Dale-Chall scale
 
@@ -522,7 +597,9 @@ Plots
 
 ```{r}
 ggplot(readScores, aes(y=dalechall_score,x=conference,colour=gender)) + geom_boxplot()
-ggplot(readScores, aes(y=dalechall_score,x=gender,colour=conference)) + geom_boxplot()
+ggplot(readScores, aes(y=dalechall_score,x=conference)) + 
+  geom_boxplot() + facet_grid("gender2") +
+  labs(y="Dale-Chall reading score", x="Gender")
 ggplot(x,aes(x=(conference),y=dalechall_score,group=paste(gender,student),colour=paste(gender,student))) + geom_line() + geom_point()
 ggplot(readScores, aes(y=dalechall_score,x=format,colour=conference)) + geom_boxplot()
 ```
@@ -558,31 +635,14 @@ There's an effect for format, but nothing else.
 
 Mixed effects model across whole data:
 
-Scale and center the distribution, removing some outliers:
-
-```{r warning=F}
-#readScores = readScores[readScores$student!="Student",]
-sdx = 1.96 * sd(readScores$dalechall_score_norm)
-mx = mean(readScores$dalechall_score_norm)
-readScoresDC = readScores[
-  readScores$dalechall_score_norm < (mx +sdx) &
-  readScores$dalechall_score_norm > (mx -sdx)
-,]
-readScoresDC$dalechall_score_norm = scale(readScoresDC$dalechall_score_norm)
-
-contrasts(readScoresDC$gender) <- contr.sum(2)/2
-contrasts(readScoresDC$format) <- contr.sum(2)/2
-contrasts(readScoresDC$student) <- contr.sum(2)/2
-contrasts(readScoresDC$review) <- contr.sum(2)/2
-```
 
 Run mixed effects model:
 
 ```{r}
 m0 = lmer(dalechall_score_norm~ 1 +
-            (format*student*gender*review) + time +
-           (1 + format + student + gender | conference),
-       data = readScoresDC[readScoresDC$conference!="E8",])
+            (format+student+gender+review)^2 + time +
+           (1 + format  + gender | conference),
+       data = readScores[readScores$conference!="E8",])
 summary(m0)
 ```
 
@@ -629,7 +689,7 @@ Dale-Chall scores:
 m0 = lmer(Score.mean.norm~ 1 +
             format + student + gender +
            (1 | conference),
-       data = readScoresDC,
+       data = readScores,
        REML = F)
 m1 = update(m0,~.+dalechall_score_scaled)
 m2 = update(m1,~.+dalechall_score_scaled:gender)
@@ -640,4 +700,18 @@ summary(m2)
 No interactions.
 
 
+\newpage
 
+# Influence of last author
+
+This study considered first authors, but future research could explore the effect of supervising authors and institutions. The data in this study is not ideal for exploring this, since the number of papers with multiple authors varies between conferences and there are many non-independencies.  The raw data is not made available here because the combination of factors make cases identifiable.
+
+We investigated whether the review scores were biased by combinations of first author gender, last author gender and review type (mixed effects model with a random intercept for each conference). We note that the biggest change is for male-male authors from E10 (single-blind) to E11 (double-blind), which would be consistent with a gender bias being neutralised by double-blind review. However, statistically, there was only a significant main effect of format.
+
+Here are the distributions of review scores by first and last author gender:
+
+![](../results/LastAuthorReviewScores.pdf)
+
+![](../results/LastAuthorReviewScores2.pdf)
+
+![](../results/LastAuthorReviewScores3.pdf)

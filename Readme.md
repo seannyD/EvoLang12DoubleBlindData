@@ -8,7 +8,7 @@
 -  Score.Mean: Mean raw score given by reviewers (scaled between 0 and 1, hierh = better paper)
 -  student: The student status of the first author at submission.
  
-## "../data/EvoLang_ReadingScores_E8_to_E12.csv"
+## ../data/EvoLang_ReadingScores_E8_to_E12.csv
 
 This has the ease of reading score, but only for papers where the text could be extracted.  The columns are as follows:
  
@@ -32,4 +32,17 @@ Because of the rough text extraction, it's not guaranteed that all of these meas
 -  "gunningfog_score"   
 -  "smog_score"         
 -  "dalechall_score"    
+
+## ../data/MatchedAuthors_E10_E11_E12.csv
+
+This data includes 50 (first) authors who had submitted to each of the last 3 conferences (EvoLang 10, 11 and 12).  Because some authors submitted multiple papers per conference, we only analysed each author’s highest ranking paper in each conference. 
+
+Each row represents a single author.
+
+-  E10, E11, E12: Review rank for each conference. 
+-  E10.format, E11.format, E12.format: The format of the submission for each conference.
+-  gender: Gender of the author.
+-  diff.E10.to.E11: Difference in review ranks between E10 and E11.
+-  diff.E11.to.E12: Difference in review ranks between E11 and E12.
+-  authorCode: Arbitrary author code.
 
