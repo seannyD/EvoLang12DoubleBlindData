@@ -40,6 +40,7 @@ library(caret)
 library(dplyr)
 library(party)
 library(lmerTest)
+library(stargazer)
 ```
 
 ```{r}
@@ -200,6 +201,16 @@ t3 = table(allData$conference,allData$format)
 
 cbind(t1,t2,t3)
 ```
+
+
+```{r}
+stargazer(allData,type = 'text')
+# Statistics for female authors:
+stargazer(allData[allData$FirstAuthorGender=="F",],type = 'text')
+# Statistics for male authors:
+stargazer(allData[allData$FirstAuthorGender=="M",],type = 'text')
+```
+
 
 
 \newpage 
