@@ -1,5 +1,5 @@
 ---
-title: "Readability"
+title: "Readability of submissions to EvoLang"
 output: 
   pdf_document:
     toc: true
@@ -36,6 +36,9 @@ knitr::include_graphics("../results/FleschKincaidReadingScores2.pdf")
 | Male   | 12.8 (2.85)  | 12.9 (2.43)  | 13.31 (2.43) | 13.12 (2.31) | 13.5 (2.75)  |
 
 Table 1: Mean Flesch-Kincaid reading scores (and standard deviations in parentheses) by conference and gender.
+
+\clearpage
+\newpage
 
 ## Conclusion
 
