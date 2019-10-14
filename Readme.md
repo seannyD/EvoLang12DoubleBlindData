@@ -1,3 +1,11 @@
+# Double-blind reviewing and gender biases at EvoLang conferences: an update
+
+Data and code for
+
+Christine Cuskley, Seán G Roberts, Stephen Politzer-Ahles, Tessa Verhoef (2019) Double-blind reviewing and gender biases at EvoLang conferences: An update, _Journal of Language Evolution_, lzz007, Online [here](https://academic.oup.com/jole/advance-article-abstract/doi/10.1093/jole/lzz007/5586645) [DOI: https://doi.org/10.1093/jole/lzz007](https://doi.org/10.1093/jole/lzz007).
+
+You can access the [preprint in this repository](https://raw.githubusercontent.com/seannyD/EvoLang12DoubleBlindData/master/CuskleyEtAl_2019_EvoLangGenderBias_Preprint.pdf).
+
 
 # Data
 
